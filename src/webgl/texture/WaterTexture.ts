@@ -1,9 +1,17 @@
+import { easeOutQuad, easeOutSine } from "../utils/animateFn";
+import * as THREE from "three";
+
+// Links:https://tympanus.net/codrops/2019/10/08/creating-a-water-like-distortion-effect-with-three-js/
+// Links: https://tympanus.net/codrops/2021/11/22/ripple-effect-on-a-texture-with-three-js/
 type WaterTextureOptions = { debug: boolean };
 
 export interface Point {
   x: number;
   y: number;
   age: 0;
+  force: number;
+  vx: number;
+  vy: number;
 }
 
 export class WaterTexture {
@@ -11,10 +19,12 @@ export class WaterTexture {
   radius: number; // 가장 큰 물방울의 반지름
   points: Point[] = []; // 물방울의 배열
   maxAge: number = 64; // 물방울의 최대 지속 시간
+  last: Point | null; // 최근에 추가된 물방울
 
   width: number;
   height: number;
   canvas: HTMLCanvasElement = document.createElement("canvas");
+  texture: THREE.Texture = new THREE.Texture(this.canvas);
   ctx: CanvasRenderingContext2D | null = this.canvas.getContext("2d");
 
   constructor(options: WaterTextureOptions = { debug: false }) {
@@ -23,6 +33,7 @@ export class WaterTexture {
     this.points = [];
     this.width = this.height = this.size;
     this.maxAge = 64;
+    this.last = null;
 
     if (options.debug) {
       this.width = window.innerWidth;
@@ -48,12 +59,30 @@ export class WaterTexture {
     this.canvas.width = this.width;
     this.canvas.height = this.height;
     this.ctx = this.canvas.getContext("2d");
+    this.texture = new THREE.Texture(this.canvas);
     this.clear();
   }
 
   addPoint(point: Point) {
-    // this.points.push({ x: point.x, y: point.y, age: 0 });
-    this.points.push({ x: point.x, y: point.y, age: point.age });
+    let force = 0;
+    let vx = 0;
+    let vy = 0;
+    const last = this.last;
+    if (last) {
+      const relativeX = point.x - last.x;
+      const relativeY = point.y - last.y;
+      // Distance
+      const distanceSquared = relativeX ** 2 + relativeY ** 2;
+      const distance = Math.sqrt(distanceSquared);
+      // Unit Vector
+      vx = relativeX / distance;
+      vy = relativeY / distance;
+      // Force
+      force = Math.min(distanceSquared * 10000, 1);
+    }
+    const newPoint = { x: point.x, y: point.y, age: point.age, force, vx, vy };
+    this.last = newPoint;
+    this.points.push(newPoint);
   }
 
   clear() {
@@ -65,8 +94,15 @@ export class WaterTexture {
   update() {
     // canvas를 초기화하고
     this.clear();
-    // 물방울 나이를 증가시키고, 나이가 maxAge를 넘어가면 배열에서 제거
+    const agePart = 1 / this.maxAge;
+
     this.points.forEach((point, index) => {
+      // 나이가 들수록 물방울은 느려진다.
+      const slowAsOlder = 1 - point.age / this.maxAge; // 괄호
+      const force = point.force * slowAsOlder * agePart;
+      point.x += point.vx * force;
+      point.y += point.vy * force;
+      // 물방울 나이를 증가시키고, 나이가 maxAge를 넘어가면 배열에서 제거
       point.age += 1;
       if (point.age > this.maxAge) {
         this.points.splice(index, 1);
@@ -77,6 +113,9 @@ export class WaterTexture {
     this.points.forEach((point) => {
       this.drawPoint(point);
     });
+
+    // 텍스처를 갱신하여 최신 상태로 유지합니다.
+    this.texture.needsUpdate = true;
   }
 
   drawPoint(point: Point) {
@@ -97,10 +136,26 @@ export class WaterTexture {
     // 물방울은 가운데는 강한 힘, 가장자리는 약한 힘을 가진다. => Radial Gradient (가장자리로 갈수록 투명도를 잃음.)
 
     // age가 maxAge에 가까울수록 투명도가 낮아짐
-    const intensity = 1 - point.age / this.maxAge;
-    const color = "255,255,255";
-    const offset = this.width * 5;
+    // const intensity = 1 - point.age / this.maxAge;
+    let intensity =
+      point.age < this.maxAge * 0.3
+        ? easeOutSine(point.age / (this.maxAge * 0.3), 0, 1, 1)
+        : easeOutQuad(
+            1 - (point.age - this.maxAge * 0.3) / (this.maxAge * 0.7),
+            0,
+            1,
+            1
+          );
+    intensity *= point.force;
 
+    // Insert data to color channels
+    // RGB Unit Vector
+    const red = ((point.vx + 1) / 2) * 255;
+    const green = ((point.vy + 1) / 2) * 255;
+    const blue = 255 * intensity;
+    const color = `${red},${green},${blue}`;
+
+    const offset = this.width * 5;
     // 1. Shadow a high offset
     ctx.shadowOffsetX = offset;
     ctx.shadowOffsetY = offset;

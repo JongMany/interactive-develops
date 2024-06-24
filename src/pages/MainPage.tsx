@@ -4,7 +4,10 @@ import { WaterTexture } from "../webgl/texture/WaterTexture";
 
 export default function MainPage() {
   const animationExecutor = useRef(
-    new TextureAnimateExecutor(new WaterTexture({ debug: true }), document.body)
+    new TextureAnimateExecutor(
+      new WaterTexture({ debug: false }),
+      document.body
+    )
   );
 
   return <div>메인</div>;
