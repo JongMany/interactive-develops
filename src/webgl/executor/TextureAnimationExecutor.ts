@@ -27,7 +27,15 @@ export class TextureAnimateExecutor<T extends Texture> {
     this.renderer.domElement.id = "webGLApp";
 
     this.targetElement = targetElement;
-    this.targetElement.appendChild(this.renderer.domElement);
+
+    if (
+      [...this.targetElement.children].findIndex(
+        (child) => child.id === "webGLApp"
+      ) === -1
+    ) {
+      this.targetElement.appendChild(this.renderer.domElement);
+    }
+
     // Camera
     this.camera = new THREE.PerspectiveCamera(
       45,
@@ -35,7 +43,7 @@ export class TextureAnimateExecutor<T extends Texture> {
       0.1,
       10000
     );
-    this.camera.position.z = 500;
+    this.camera.position.z = 50;
     // Scene
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x161624);
